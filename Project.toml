@@ -1,0 +1,23 @@
+name = "OpenAPI"
+uuid = "c0108391-24a6-4559-8a5d-6b28041eb8ca"
+authors = ["Jacob Quinn <quinn.jacobd@gmail.com>"]
+version = "0.1.0"
+
+[deps]
+Dates = "ade2ca70-3891-5945-98fb-dc099432e06a"
+JSON = "682c06a0-de6a-54ab-a142-c8b1cf79cde6"
+
+[weakdeps]
+HTTP = "cd3eb016-35fb-5094-929b-558a96fad6f3"
+Servo = "169596a4-850b-412e-9996-453439081821"
+
+[extensions]
+OpenAPIHTTPExt = "HTTP"
+OpenAPIServoExt = "Servo"
+
+[compat]
+Dates = "1.11"
+HTTP = "1.10"
+JSON = "1"
+Servo = "2"
+julia = "1.11"
