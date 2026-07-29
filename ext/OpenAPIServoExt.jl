@@ -12,19 +12,15 @@ using OpenAPI, Servo
 basemime(fmt::Servo.Format) = String(strip(first(split(Servo.mime(fmt), ';'))))
 
 # Best-effort response type: infer the return type of the endpoint's generated
-# binder (which carries the full typed call, including keyword arguments),
-# against a concrete do-nothing transport so inference is precise and does not
-# depend on which real transports happen to be loaded. Reflectively-bound
-# endpoints (GenericBinder) and abstract inference results report "unknown"
-# rather than guessing.
-struct InferenceRequest end
-Servo.rawquery(::InferenceRequest) = Pair{String, String}[]
-Servo.rawbody(::InferenceRequest) = UInt8[]
-
+# binder, which carries the full typed call (including keyword arguments) and
+# receives already-extracted request data, so inference is precise regardless of
+# transport. Reflectively-bound endpoints (GenericBinder) and abstract inference
+# results report "unknown" rather than guessing.
 function inferresponse(ep::Servo.Endpoint)
     ep.binder isa Servo.GenericBinder && return nothing
     ts = try
-        Base.return_types(ep.binder, Tuple{typeof(ep.format), Dict{Symbol, String}, InferenceRequest})
+        Base.return_types(ep.binder,
+            Tuple{typeof(ep.format), Dict{Symbol, String}, Dict{String, String}, Vector{UInt8}})
     catch
         return nothing
     end
