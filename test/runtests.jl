@@ -45,6 +45,16 @@ end
 Servo.@GET ROUTER "/api/secret" BearerAuth("sesame") function secret()
     (; principal = Servo.principal())
 end
+# named catch-all: documented as the `/api/docs/{page}` template
+Servo.@GET ROUTER "/api/docs/{page...}" public function docpage(page::String)
+    (; page)
+end
+# raw handler: documented with its captures, response unknown
+Servo.register!(ROUTER, :GET, "/api/ping/{name}", req -> "pong:$(Servo.pathparams()[:name])";
+                auth=Servo.Public(), name="ping")
+# anonymous wildcards: real routes, but undescribable -> omitted from the document
+Servo.register!(ROUTER, :GET, "/api/static/**", req -> Servo.Response(200, "blob");
+                auth=Servo.Public(), name="static")
 OpenAPI.register!(ROUTER; title="E2E API", version="0.0.1")
 
 getschema(reg, T) = OpenAPI.schemaof(reg, T)
@@ -210,7 +220,8 @@ end
 
     # static: operations & document straight from the router
     sops = OpenAPI.operations(router)
-    @test length(sops) == 4  # the openapi discovery endpoint itself is skipped
+    # openapi discovery endpoint + the anonymous-wildcard route are skipped
+    @test length(sops) == 6
     byid = Dict(op.id => op for op in sops)
     @test byid["getwidget"].responsetype == TWidget
     @test byid["getwidget"].params[1].location == :path
@@ -218,6 +229,14 @@ end
     @test byid["neworder"].responsetype <: NamedTuple
     @test byid["rmwidget"].responsetype === Nothing
     @test byid["secret"].secured
+    # named catch-all: template rewritten, param typed as its String remainder
+    @test byid["docpage"].path == "/api/docs/{page}"
+    @test byid["docpage"].params[1].name == "page" && byid["docpage"].params[1].type === String
+    # raw handler: captures documented, response unknown
+    @test byid["ping"].path == "/api/ping/{name}"
+    @test byid["ping"].params[1].location == :path
+    @test byid["ping"].responsetype === nothing
+    @test !haskey(byid, "static")
 
     sdoc = OpenAPI.document(router; title="E2E API", version="0.0.1")
     @test sdoc["paths"]["/api/widgets/{id}"]["get"]["responses"]["200"]["content"]["application/json"]["schema"]["\$ref"] ==
@@ -234,7 +253,8 @@ end
         @test rdoc["info"]["title"] == "E2E API"
         @test !haskey(rdoc["paths"], "/openapi.json")
         @test Set(keys(rdoc["paths"])) ==
-            Set(["/api/widgets/{id}", "/api/orders", "/api/secret"])
+            Set(["/api/widgets/{id}", "/api/orders", "/api/secret",
+                 "/api/docs/{page}", "/api/ping/{name}"])
 
         # generate a client from the running app's document and call through it
         dir = mktempdir()
@@ -258,6 +278,10 @@ end
         @test res.ok == true && res.count == 3
 
         @test Base.@invokelatest(C.rmwidget(5)) === nothing
+
+        # catch-all endpoint through the generated client (single-segment value;
+        # multi-segment values don't survive the client's percent-encoding)
+        @test Base.@invokelatest(C.docpage("intro")).page == "intro"
 
         # auth: 401 without a token, principal with one
         err = @test_throws C.ApiError Base.@invokelatest(C.secret())

@@ -17,7 +17,9 @@ basemime(fmt::Servo.Format) = String(strip(first(split(Servo.mime(fmt), ';'))))
 # transport. Reflectively-bound endpoints (GenericBinder) and abstract inference
 # results report "unknown" rather than guessing.
 function inferresponse(ep::Servo.Endpoint)
-    ep.binder isa Servo.GenericBinder && return nothing
+    # raw-handler routes (binder === nothing) do their own request reading;
+    # nothing to infer from
+    (ep.binder === nothing || ep.binder isa Servo.GenericBinder) && return nothing
     ts = try
         Base.return_types(ep.binder,
             Tuple{typeof(ep.format), Dict{Symbol, String}, Dict{String, String}, Vector{UInt8}})
@@ -36,14 +38,23 @@ end
 Describe a router's endpoints as framework-neutral [`OpenAPI.Operation`](@ref)s:
 path/query/body binding comes from each endpoint's `params`, the content type
 from its `format`, the security flag from its auth scheme (`Public` or not), and
-the response schema from best-effort return-type inference of its binder.
-Endpoints whose name is in `skip` are omitted (by default the `/openapi.json`
-discovery endpoint itself).
+the response schema from best-effort return-type inference of its binder (raw
+handlers report an unknown response). Endpoints whose name is in `skip` are
+omitted (by default the `/openapi.json` discovery endpoint itself).
+
+Path templates are rebuilt from the parsed route pattern, so a named catch-all
+`/files/{rest...}` is documented as `/files/{rest}` (OpenAPI has no multi-segment
+template syntax; note that a generated client percent-encodes the value, so
+multi-segment values don't round-trip through generated clients). Routes with
+*anonymous* wildcards (`*`/`**`) are omitted entirely — there is nothing to name
+in a document.
 """
 function OpenAPI.operations(router::Servo.Router; skip=("openapi",))
     ops = OpenAPI.Operation[]
     for ep in router.endpoints
         ep.name in skip && continue
+        # anonymous wildcard/catch-all segments have no OpenAPI representation
+        all(s -> s.kind === :literal || !isempty(s.text), ep.segments) || continue
         params = OpenAPI.Param[]
         bodytype = nothing
         for p in ep.params
@@ -55,8 +66,10 @@ function OpenAPI.operations(router::Servo.Router; skip=("openapi",))
                 bodytype = p.type
             end
         end
+        template = isempty(ep.segments) ? "/" :
+            "/" * join((s.kind === :literal ? s.text : "{$(s.text)}" for s in ep.segments), '/')
         push!(ops, OpenAPI.Operation(;
-            id=ep.name, method=ep.method, path=ep.path, params, bodytype,
+            id=ep.name, method=ep.method, path=template, params, bodytype,
             responsetype=inferresponse(ep), contenttype=basemime(ep.format),
             secured=!(ep.auth isa Servo.Public)))
     end
