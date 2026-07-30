@@ -6,9 +6,9 @@ Servo = "169596a4-850b-412e-9996-453439081821"
 Test = "8dfed614-e22c-5e08-85e1-65c5234f0b40"
 
 [sources]
-Servo = {url = "https://github.com/JuliaServices/Servo.jl", rev = "rewrite"}
+Servo = {url = "https://github.com/JuliaServices/Servo.jl", rev = "656de9497a908a5aef755eef4b454af0773b2af5"}
 
 [compat]
-HTTP = "1.10"
+HTTP = "2"
 JSON = "1"
 Servo = "2"
