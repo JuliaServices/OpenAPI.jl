@@ -3,24 +3,24 @@
 # referenced by $ref everywhere they appear.
 
 function obj(pairs::Pair...)
-    o = JSON.Object{String, Any}()
+    o = JSON.Object{String,Any}()
     for (k, v) in pairs
         o[String(k)] = v
     end
     return o
 end
 
-emptyschema() = JSON.Object{String, Any}()  # {} matches any value
+emptyschema() = JSON.Object{String,Any}()  # {} matches any value
 
 """
 Accumulates `#/components/schemas` entries while a document is built. Named
 Julia struct types are registered once (by `nameof`, deduped) and referenced.
 """
 struct SchemaRegistry
-    schemas::JSON.Object{String, Any}
-    seen::IdDict{Any, String}
+    schemas::JSON.Object{String,Any}
+    seen::IdDict{Any,String}
 end
-SchemaRegistry() = SchemaRegistry(JSON.Object{String, Any}(), IdDict{Any, String}())
+SchemaRegistry() = SchemaRegistry(JSON.Object{String,Any}(), IdDict{Any,String}())
 
 uniontypes(T) = T isa Union ? [uniontypes(T.a); uniontypes(T.b)] : [T]
 
@@ -48,9 +48,12 @@ function schemaof(reg::SchemaRegistry, ::Type{T}) where {T}
     T === Dates.Time && return obj("type" => "string", "format" => "time")
     (T <: AbstractString || T === Symbol || T === Char) && return obj("type" => "string")
     T isa Union && return obj("oneOf" => Any[schemaof(reg, t) for t in uniontypes(T)])
-    T <: Base.Enum && return obj("type" => "string", "enum" => Any[string(i) for i in instances(T)])
-    T <: AbstractVector && return obj("type" => "array", "items" => schemaof(reg, eltype(T)))
-    T <: AbstractDict && return obj("type" => "object", "additionalProperties" => schemaof(reg, valtype(T)))
+    T <: Base.Enum &&
+        return obj("type" => "string", "enum" => Any[string(i) for i in instances(T)])
+    T <: AbstractVector &&
+        return obj("type" => "array", "items" => schemaof(reg, eltype(T)))
+    T <: AbstractDict &&
+        return obj("type" => "object", "additionalProperties" => schemaof(reg, valtype(T)))
     T <: Tuple && return obj("type" => "array")
     T <: NamedTuple && isconcretetype(T) && return objectschema(reg, T)
     if isstructtype(T) && isconcretetype(T)
@@ -73,14 +76,18 @@ function schemaof(reg::SchemaRegistry, ::Type{T}) where {T}
 end
 
 function objectschema(reg::SchemaRegistry, ::Type{T}) where {T}
-    props = JSON.Object{String, Any}()
+    props = JSON.Object{String,Any}()
     required = String[]
     for (fname, ftype) in zip(fieldnames(T), fieldtypes(T))
         props[string(fname)] = schemaof(reg, ftype)
         # Union{Nothing, ...} (and Any) fields are optional; everything else required
         Nothing <: ftype || push!(required, string(fname))
     end
-    s = obj("type" => "object", "properties" => props)
+    s = obj(
+        "type" => "object",
+        "properties" => props,
+        "additionalProperties" => false,
+    )
     isempty(required) || (s["required"] = required)
     return s
 end

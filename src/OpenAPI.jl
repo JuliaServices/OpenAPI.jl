@@ -9,20 +9,29 @@ Two pieces:
    Servo extension loaded) and get a valid OpenAPI 3.2.0 document.
    `OpenAPI.register!(router)` exposes it from the running app at
    `/openapi.json`, making the endpoints discoverable.
-2. **Client generation** — [`OpenAPI.client`](@ref) turns an OpenAPI document
-   (built in-process, read from a file, or fetched from a running app) into a
-   single-file Julia client module whose only imports are HTTP and JSON (plus
-   Dates when the API uses date fields).
+2. **Client generation** — [`OpenAPI.client`](@ref) turns an OpenAPI 3.0, 3.1,
+   or 3.2 document (built in-process, read from JSON or YAML, or fetched from a
+   running app) into a deterministic single-file Julia client. Generated
+   modules use HTTP.jl for transport and JSON.jl plus JSONSchema.jl for typed,
+   validated request and response handling.
 """
 module OpenAPI
 
-using Dates, JSON
+using Dates, JSON, SHA
+import JSONSchema, YAML
 
 const OPENAPI_VERSION = "3.2.0"
 
 include("schemas.jl")
 include("document.jl")
+include("diagnostics.jl")
+include("source_locations.jl")
+include("loading.jl")
+include("references.jl")
+include("normalize.jl")
+include("planning.jl")
 include("read.jl")
+include("runtime.jl")
 include("client.jl")
 
 # ── extension seams ─────────────────────────────────────────────────────────
@@ -42,5 +51,6 @@ function operations end
 
 # implemented by OpenAPIHTTPExt (loaded with the HTTP package)
 function fetchurl end
+function fetchresource end
 
 end # module

@@ -1,68 +1,44 @@
 """
-    OpenAPI.read(source) -> JSON.Object
+    OpenAPI.read(source; options...) -> AbstractDict
 
-Read and structurally validate an OpenAPI document. `source` may be:
+Read a JSON or YAML OpenAPI 3.0, 3.1, or 3.2 document. `source` may be inline
+text, a local file, or an HTTP(S) URL when HTTP.jl is loaded. The returned
+object is recursively read-only.
 
-- a JSON string (starts with `{`),
-- a path to a `.json` file,
-- an `http(s)://` URL (requires the HTTP package to be loaded) — e.g. the
-  `/openapi.json` endpoint a Servo app exposes via [`OpenAPI.register!`](@ref).
+Use [`OpenAPI.load`](@ref) when source identity, format, and version metadata
+are also needed.
 """
-function read(source::AbstractString)
-    s = strip(source)
-    if startswith(s, "{")
-        return parse(s)
-    elseif startswith(s, "http://") || startswith(s, "https://")
-        Base.get_extension(@__MODULE__, :OpenAPIHTTPExt) === nothing &&
-            throw(ArgumentError("reading a document from a URL requires the HTTP package: `using HTTP`"))
-        return parse(fetchurl(String(s)))
-    elseif isfile(s)
-        return parse(Base.read(String(s), String))
-    else
-        throw(ArgumentError("`source` is not a JSON document, an existing file, or a URL: $(first(s, 100))"))
+function read(source::AbstractString; kwargs...)
+    try
+        return load(source; kwargs...).resource.contents
+    catch error
+        error isa OpenAPIError || rethrow()
+        throw(ArgumentError(sprint(showerror, error)))
     end
 end
 
-parse(s::AbstractString) = validate(JSON.parse(s))
-
-"""
-    OpenAPI.validate(doc) -> doc
-
-Structural validation of an OpenAPI document (works on both parsed and
-freshly-built documents): spec version, required `info` fields, `paths` shape,
-known methods, and that every operation has responses with descriptions.
-Throws `ArgumentError` on the first problem; returns the document otherwise.
-"""
-function validate(doc)
-    doc isa JSON.Object || doc isa AbstractDict ||
-        throw(ArgumentError("expected a JSON object document, got $(typeof(doc))"))
-    v = get(doc, "openapi", nothing)
-    v isa AbstractString && startswith(v, "3.") ||
-        throw(ArgumentError("not an OpenAPI 3.x document: `openapi` = $(repr(v))"))
-    info = get(doc, "info", nothing)
-    info !== nothing || throw(ArgumentError("missing required `info` object"))
-    get(info, "title", nothing) isa AbstractString ||
-        throw(ArgumentError("missing required `info.title`"))
-    get(info, "version", nothing) isa AbstractString ||
-        throw(ArgumentError("missing required `info.version`"))
-    paths = get(doc, "paths", nothing)
-    paths === nothing && return doc  # valid: a doc may have no paths
-    methodnames = Set(lowercase(string(m)) for m in METHODS)
-    for (path, item) in pairs(paths)
-        startswith(String(path), "/") ||
-            throw(ArgumentError("path `$path` must start with '/'"))
-        for (key, op) in pairs(item)
-            key in ("summary", "description", "parameters", "servers") && continue
-            key in methodnames ||
-                throw(ArgumentError("path `$path`: unknown operation method `$key`"))
-            responses = get(op, "responses", nothing)
-            responses !== nothing && !isempty(responses) ||
-                throw(ArgumentError("operation `$key $path` has no responses"))
-            for (status, resp) in pairs(responses)
-                get(resp, "description", nothing) isa AbstractString ||
-                    throw(ArgumentError("response `$status` of `$key $path` is missing its required description"))
-            end
-        end
+function parse(source::AbstractString; kwargs...)
+    try
+        return load(source; kwargs...).resource.contents
+    catch error
+        error isa OpenAPIError || rethrow()
+        throw(ArgumentError(sprint(showerror, error)))
     end
-    return doc
+end
+
+"""
+    OpenAPI.validate(document) -> document
+
+Validate an in-memory document against the official structural schema for its
+declared OAS 3.0, 3.1, or 3.2 minor line. This compatibility API returns the
+original object. Use [`OpenAPI.check`](@ref) to collect structured diagnostics.
+"""
+function validate(document::AbstractDict; kwargs...)
+    try
+        normalize(document; kwargs...)
+    catch error
+        error isa OpenAPIError || rethrow()
+        throw(ArgumentError(sprint(showerror, error)))
+    end
+    return document
 end

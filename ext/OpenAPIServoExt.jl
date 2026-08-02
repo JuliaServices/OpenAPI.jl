@@ -21,8 +21,10 @@ function inferresponse(ep::Servo.Endpoint)
     # nothing to infer from
     (ep.binder === nothing || ep.binder isa Servo.GenericBinder) && return nothing
     ts = try
-        Base.return_types(ep.binder,
-            Tuple{typeof(ep.format), Dict{Symbol, String}, Dict{String, String}, Vector{UInt8}})
+        Base.return_types(
+            ep.binder,
+            Tuple{typeof(ep.format),Dict{Symbol,String},Dict{String,String},Vector{UInt8}},
+        )
     catch
         return nothing
     end
@@ -49,7 +51,7 @@ multi-segment values don't round-trip through generated clients). Routes with
 *anonymous* wildcards (`*`/`**`) are omitted entirely — there is nothing to name
 in a document.
 """
-function OpenAPI.operations(router::Servo.Router; skip=("openapi",))
+function OpenAPI.operations(router::Servo.Router; skip = ("openapi",))
     ops = OpenAPI.Operation[]
     for ep in router.endpoints
         ep.name in skip && continue
@@ -61,31 +63,61 @@ function OpenAPI.operations(router::Servo.Router; skip=("openapi",))
             if p.source == :path
                 push!(params, OpenAPI.Param(string(p.name), :path, p.type))
             elseif p.source == :query
-                push!(params, OpenAPI.Param(string(p.name), :query, p.type; required=p.required))
+                push!(
+                    params,
+                    OpenAPI.Param(string(p.name), :query, p.type; required = p.required),
+                )
             else
                 bodytype = p.type
             end
         end
-        template = isempty(ep.segments) ? "/" :
-            "/" * join((s.kind === :literal ? s.text : "{$(s.text)}" for s in ep.segments), '/')
-        push!(ops, OpenAPI.Operation(;
-            id=ep.name, method=ep.method, path=template, params, bodytype,
-            responsetype=inferresponse(ep), contenttype=basemime(ep.format),
-            secured=!(ep.auth isa Servo.Public)))
+        template =
+            isempty(ep.segments) ? "/" :
+            "/" *
+            join((s.kind === :literal ? s.text : "{$(s.text)}" for s in ep.segments), '/')
+        push!(
+            ops,
+            OpenAPI.Operation(;
+                id = ep.name,
+                method = ep.method,
+                path = template,
+                params,
+                bodytype,
+                responsetype = inferresponse(ep),
+                contenttype = basemime(ep.format),
+                secured = !(ep.auth isa Servo.Public),
+            ),
+        )
     end
     return ops
 end
 
-OpenAPI.document(router::Servo.Router; skip=("openapi",), kw...) =
+OpenAPI.document(router::Servo.Router; skip = ("openapi",), kw...) =
     OpenAPI.document(OpenAPI.operations(router; skip); kw...)
 
-function OpenAPI.register!(router::Servo.Router; path::AbstractString="/openapi.json", kw...)
+function OpenAPI.register!(
+    router::Servo.Router;
+    path::AbstractString = "/openapi.json",
+    kw...,
+)
     # the document is built per request so it reflects the current route table
-    target = () -> Servo.Response(200, OpenAPI.JSON.json(OpenAPI.document(router; kw...));
-                                  headers=["Content-Type" => "application/json"])
-    return Servo.register!(router, Servo.Endpoint(;
-        name="openapi", method=:GET, path, target,
-        auth=Servo.Public(), format=Servo.TextFormat()))
+    target =
+        () -> Servo.Response(
+            200,
+            OpenAPI.JSON.json(OpenAPI.document(router; kw...));
+            headers = ["Content-Type" => "application/json"],
+        )
+    return Servo.register!(
+        router,
+        Servo.Endpoint(;
+            name = "openapi",
+            method = :GET,
+            path,
+            target,
+            auth = Servo.Public(),
+            format = Servo.TextFormat(),
+        ),
+    )
 end
 
 end # module
