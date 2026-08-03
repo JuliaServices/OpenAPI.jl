@@ -402,6 +402,7 @@ include("references.jl")
 include("semantics.jl")
 include("runtime.jl")
 include("runtime_integration.jl")
+include("trim_compile_tests.jl")
 if haskey(ENV, "OPENAPI_CORPUS_TESTS")
     include("corpus.jl")
 end

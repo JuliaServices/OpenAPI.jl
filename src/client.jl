@@ -296,6 +296,21 @@ mutable struct Client
     validate_requests::Bool
     validate_responses::Bool
 end
+
+function _normalize_media_codecs(codecs::Dict{String,Function})
+    normalized = Dict{String,Function}()
+    for name in keys(codecs)
+        normalized[_base_media_type(name)] = codecs[name]
+    end
+    return normalized
+end
+
+function _normalize_media_codecs(codecs::AbstractDict)
+    return Dict{String,Function}(
+        _base_media_type(name) => codec for (name, codec) in codecs
+    )
+end
+
 function Client(
     server::Union{Nothing,AbstractString} = nothing;
     server_index::Integer = 1,
@@ -311,16 +326,20 @@ function Client(
     validate_responses::Bool = true,
 )
     server_index > 0 || throw(ArgumentError("server_index must be positive"))
-    normalized_credentials = Dict{String,AbstractCredential}(
+    normalized_credentials = credentials isa Dict{String,AbstractCredential} ?
+                             copy(credentials) :
+                             Dict{String,AbstractCredential}(
         String(name) => credential for (name, credential) in credentials
     )
-    normalized_headers = Pair{String,String}[
+    normalized_headers = headers isa Vector{Pair{String,String}} ? copy(headers) :
+                         Pair{String,String}[
         String(name) => String(value) for (name, value) in headers
     ]
     return Client(
         server === nothing ? nothing : String(rstrip(server, '/')),
         Int(server_index),
         server_name === nothing ? nothing : String(server_name),
+        server_variables isa Dict{String,String} ? copy(server_variables) :
         Dict{String,String}(
             String(name) => String(value) for (name, value) in server_variables
         ),
@@ -328,12 +347,8 @@ function Client(
         normalized_headers,
         request_options,
         require_credentials,
-        Dict{String,Function}(
-            _base_media_type(name) => codec for (name, codec) in media_encoders
-        ),
-        Dict{String,Function}(
-            _base_media_type(name) => codec for (name, codec) in media_decoders
-        ),
+        _normalize_media_codecs(media_encoders),
+        _normalize_media_codecs(media_decoders),
         validate_requests,
         validate_responses,
     )
